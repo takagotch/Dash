@@ -19,7 +19,7 @@
 BOOST_FIXTURE_TEST_SUITE(crypto_tests, BasicTestingSetup)
 
 template<typename Hasher, typename In, typename Out>
-void TestVector() {
+void TestVector(const Hasher &h, const In &in, const out &out) {
   Out hash;
   BOOST_CHECK(out.size() == h.OUTPUT_SIZE);
   hash.resize(out.size());
@@ -43,29 +43,59 @@ void TestVector() {
   BOOST_CHECK(hash == out);
 }
 
-void TestSHA1() {}
-void TestSHA256() {}
-void TestSHA512() {}
-void TestRIPEMD160() {}
+void TestSHA1(const std::string &in, const std::string &hexout) { TestVector(CSHA1(), in, ParseHex(hexout);)}
+void TestSHA256(const std::string &in, const std::string &hexout) { TestVector(CSHA256(), in, ParseHex(hexout));}
+void TestSHA512(const std::string &in, const std::string &hexout) { TestVector(CSHA512(), in, ParseHex(hexout));}
+void TestRIPEMD160(const std::string &in, const std::string &hexout) { TestVector(CRIPEMD160(), in, ParseHex(hexout));}
 
-void TestMACSHA256() {
-
+void TestMACSHA256(const std::string &hexkey, const std::string &hexin, const std::string &hexout) {
+  std::vector<unsigned char> key = ParseHex(hexkey);
+  TestVector(CHMAC_SHA256(&key[0], key.size()), ParseHex(hexin), ParseHex(hexout));
 }
 
-void TestMACSHA512() {
-
+void TestMACSHA512(const std::string &hexkey, cont std::string &hexin, const std::string &hexout) {
+  std::vector<unsigned char> key = ParseHex(hexkey);
+  TestVector(CHMAC_SHA512(&key[0], key.size()), ParseHex(hexin), ParseHex(hexout));
 }
 
 void TestAES128(const std::string &hexkey, const std::string &hexin, const std::string &hexout) 
 {
+  std::vector<unsigned char> key = ParseHex(hexkey);
+  std::vector<unsigned char> in = ParseHex(hexin);
+  std::vector<unsigned char> correctout = ParseHex(hexout);
+  std::vector<unsigned char> buf, buf2;
 
+  assert(key.size() == 16);
+  assert(in.size() == 16);
+  assert(correctout.size() == 16);
+  AES128Encrypt enc(&key[0]);
+  buf.resize(correctout.size());
+  buf2.resize(correctout.size());
+  enc.Encrypt(&buf[0], &in[0]);
+  BOOST_CHECK_EQUAL(HexStr(buf), HexStr(correctout));
+  AES128Decrypt dec(&key[0]);
+  dec.Decrypt(&buf2[0], &buf[0]);
+  BOOST_CHECK_EQUAL(HexStr(buf2), HexStr(in));
 }
 
 void TestAES256(const std::string &hexkey, const std::string &hexin, const std::string &hexout) 
 {
-  std::vector<> key = ParseHex(hexkey);
+  std::vector<unsigned char> key = ParseHex(hexkey);
+  std::vector<unsigned char> in = ParseHex(hexin);
+  std::vector<unsigned char> correctout = ParseHex(hexout);
+  std::vector<unsigned char> buf, buf2;
 
-
+  assert(key.size() == 16);
+  assert(in.size() == 16);
+  assert(correctout.size() == 16);
+  AES128Encrypt enc(&key[0]);
+  buf.resize(correctout.size());
+  buf2.resize(correctout.size());
+  enc.Encypt(&buf[0], &in[0]);
+  BOOST_CHECK_EQUAL(HexStr(buf), HexStr(correctout));
+  AES128Decrypt dec(&key[0]);
+  dec.Decrypt(&buf2[0], &buf[0]);
+  BOOST_CHECK_EQUAL(HexStr(buf2), HexStr(in));
 }
 
 void TestAES128CBC(const std::string &hexkey, const std::string &hexiv, bool pad, const std::string &hexin, const std::string &hexout)
@@ -158,55 +188,213 @@ std::string LongTestString(void) {
 
 const std::string test1 = LongTestString();
 
-BOOST_AUTO_TEST_CASE() {
+BOOST_AUTO_TEST_CASE(ripemd160_testvectors) {
+  TestRIPEMD160("", "xxx");
+  TestRIPEMD160("abc", "xxx");
+  TestRIPEMD160("message digest", "xxx");
+  TestRIPEMD160("secure hash algorithm", "xxx");
+  TestRIPEMD160("RIPEMD160 is considered to be safe", "xxx");
+  TestRIPEMD160("xxx",
+		"xxx");
+  TestRIPEMD160("For this sample, this 63-byte string will be used as input data",
+		"xxx");
+  TestRIPEMD160("This is exactly 64 bytes long, not counting the terminating byte",
+		"xxx");
+  TestRIPEMD160(std::string(1000000, 'a'), "xxx");
+  TestRIPEMD160(test1, "xxx");
+}
+
+BOOST_AUTO_TEST_CASE(sha1_testvectors) {
+  TestSHA1("", "xxx");
+  TestSHA1("abc", "xxx");
+  TestSHA1("message digest", "xxx");
+  TestSHA1("secure hash algorithm", "xxx");
+  TestSHA1("SHA1 is considered to be safe", "xxx");
+  TestSHA1("xxx",
+	   "xxx");
+  TestSHA1("For this sample, this 63-byte string will be used as input data",
+	   "xxx");
+  TestSHA1("This is exactly 64 bytes long, not counting the terminating byte",
+	   "xxx");
+  TestSHA1(std::string(1000000, 'a'), "xxx");
+  TestSHA1(test1, "xxx");
 
 }
 
-BOOST_AUTO_TEST_CASE() {
+BOOST_AUTO_TEST_CASE(sha256_testvectors) {
+  TestSHA256("", "xxx");
+  TestSHA256("abc", "xxx");
+  TestSHA256("message digest",
+	     "xxx");
+  TestSHA256("secure hash algorithm",
+	     "xxx");
+  TestSHA256("SHA256 is considered to be safe",
+	     "xxx");
+  TestSHA256("xxx",
+	     "xxx");
+  TestSHA256("For this sample, this 63-byte string will be used as input data",
+	     "xxx");
+  TestSHA256("This is exactly 64 bytes long, not counting the terminating byte",
+	     "xxx");
+  TestSHA256("As Bitcoin relies on 80 byte header hashes, we want to have an example for that.",
+	     "xxx");
+  TestSHA256(std::string(1000000, 'a'),
+	     "xxx");
+  TestSHA256(test1, "xxx");
+}
+
+BOOST_AUTO_TEST_CASE(sha512_testvectors) {
+  TestSHA512("xxx",
+	     "xxx"
+	     "xxx");
+  TestSHA512("xxx",
+	     "xxx"
+	     "xxx");
+  TestSHA512("xxx",
+	     "xxx"
+	     "xxx");
+  TestSHA512("xxx",
+	     "xxx"
+	     "xxx");
+  TestSHA512("xxx",
+	     "xxx"
+	     "xxx");
+  TestSHA512("xxx",
+	     "xxx"
+	     "xxx");
+  TestSHA512("xxx",
+	     "xxx"
+	     "xxx");
+  TestSHA512("xxx",
+	     "xxx"
+	     "xxx");
+  TestSHA512("xxx",
+	     "xxx"
+	     "xxx");
+  TestSHA512(std::string(1000000, 'a'),
+	     "xxx"
+	     "xxx");
+  TestSHA512(test1,
+	     "xxx"
+	     "xxx");
+}
+
+BOOST_AUTO_TEST_CASE(hmac_sha256_testvectors) {
+  TestHMACSHA256("xxx",
+		 "xxx",
+		 "xxx",
+		 "xxx");
+  TestHMACSHA256("xxx",
+		 "xxx",
+		 "xxx",
+		 "xxx");
+  TestHMACSHA256("xxx",
+		 "xxx",
+		 "xxx",
+		 "xxx");
+  TestHMACSHA256("xxx",
+		 "xxx",
+		 "xxx",
+		 "xxx");
+  TestHMACSHA256("xxx",
+		 "xxx",
+		 "xxx",
+		 "xxx");
+  TestHMACSHA256("xxx",
+		 "xxx",
+		 "xxx",
+		 "xxx");
 
 }
 
-BOOST_AUTO_TEST_CASE() {
+BOOST-AUTO_TEST_CASE(hmac_sha512_testvectors) {
+  TestHMACSHA512("xxx",
+		 "xxx",
+		 "xxx",
+		 "xxx");
+  TestHMACSHA512("xxx",
+		 "xxx",
+		 "xxx",
+		 "xxx");
+  TestHMACSHA512("xxx",
+		 "xxx",
+		 "xxx",
+		 "xxx");
+  TestHMACSHA512("xxx",
+		 "xxx",
+		 "xxx",
+		 "xxx");
+  TestHMACSHA512("xxx",
+		 "xxx",
+		 "xxx",
+		 "xxx");
+  TestHMACSHA512("xxx",
+		 "xxx",
+		 "xxx",
+		 "xxx");
 
 }
 
-BOOST_AUTO_TEST_CASE() {
+BOOST_AUTO_TEST_CASE(aes_testvectors) {
+  TestAES128("xxx", "xxx", "xxx");
+  TestAES256("xxx", "xxx", "xxx");
+
+  TestAES128("xxx", "xxx", "xxx");
+  TestAES128("xxx", "xxx", "xxx");
+  TestAES128("xxx", "xxx", "xxx");
+  TestAES128("xxx", "xxx", "xxx");
+  TestAES256("xxx", "xxx", "xxx");
+  TestAES256("xxx", "xxx", "xxx");
+  TestAES256("xxx", "xxx", "xxx");
+  TestAES256("xxx", "xxx", "xxx");
 
 }
 
-BOOST_AUTO_TEST_CASE() {
+BOOST_AUTO_TEST_CASE(aes_cbc_testvectors) {
 
-}
+  TestAES128CBC("xxx", "xxx", false, \
+		"xxx", "xxx");
+  TestAES128CBC("xxx", "xxx", false, \
+		"xxx", "xxx");
+  TestAES128CBC("xxx", "xxx", false, \
+		"xxx", "xxx");
+  TestAES128CBC("xxx", "xxx", false, \
+		"xxx", "xxx");
 
-BOOST-AUTO_TEST_CASE() {
+  TestAES128CBC("xxx", "xxx", true, \
+		"xxx", "xxx");
+  TestAES128CBC("xxx", "xxx", true, \
+		"xxx", "xxx");
+  TestAES128CBC("xxx", "xxx", true, \
+		"xxx", "xxx");
+  TestAES128CBC("xxx", "xxx", true, \
+		"xxx", "xxx");
 
-}
+  TestAES256CBC("xxx", \
+		"xxx", false, "xxx", \
+		"xxx");
+  TestAES256CBC("xxx", \
+		"xxx", false, "xxx", \
+		"xxx");
+  TestAES256CBC("xxx", \
+		"xxx", false, "xxx", \
+		"xxx");
+  TestAES256CBC("xxx". \
+		"xxx", false, "xxx", \
+		"xxx");
 
-BOOST_AUTO_TEST_CASE() {
-
-}
-
-BOOST_AUTO_TEST_CASE() {
-
-  TestAES128CBC();
-  TestAES128CBC();
-  TestAES128CBC();
-  TestAES128CBC();
-
-  TestAES128CBC();
-  TestAES128CBC();
-  TestAES128CBC();
-  TestAES128CBC();
-
-  TestAES256CBC();
-  TestAES256CBC();
-  TestAES256CBC();
-  TestAES256CBC();
-
-  TestAES256CBC();
-  TestAES256CBC();
-  TestAES256CBC();
-  TestAES256CBC();
+  TestAES256CBC("xxx", \
+		"xxx", true, "xxx", \
+		"xxx");
+  TestAES256CBC("xxx", \
+		"xxx", true, "xxx",
+		"xxx");
+  TestAES256CBC("xxx", \
+		"xxx", true, "xxx",
+		"xxx");
+  TestAES256CBC("xxx", \
+		"xxx", true, "xxx", \
+		"xxx");
 }
 
 BOOST_AUTO_TEST_CASE(pbkdf2_hmac_sha512_test) {
