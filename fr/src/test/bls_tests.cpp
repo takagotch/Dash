@@ -7,40 +7,40 @@
 
 BOOST_FIXTURE_TEST_SUITE(bls_tests, BasicTestingSetup)
 
-BOOST_AUTO_TEST_CASE()
+BOOST_AUTO_TEST_CASE(bls_tests, BasicTestingSetup)
 {
   CBLSSecretKey sk;
-  std::string strValidSecret = "";
+  std::string strValidSecret = "0000";
 
-  BOOST_CHECK();
-  BOOST_CHECK();
-  BOOST_CHECK();
-  BOOST_CHECK();
+  BOOST_CHECK(sk.SetHexStr(strValidSecret));
+  BOOST_CHECK(!sk.SetHexStr(strValidSecret));
+  BOOST_CHECK(!sk.IsValid());
+  BOOST_CHECK(sk == CBLSSecretKey());
 
-  BOOST_CHECK();
-  BOOST_CHECK();
-  BOOST_CHECK();
-  BOOST_CHECK();
-  BOOST_CHECK();
-  BOOST_CHECK();
+  BOOST_CHECK(sk.SetHexStr(strHexStr(strValidSecret)));
+  BOOST_CHECK(!sk.SetHexStr("xxx"));
+  BOOST_CHECK(!sk.IsValid());
+  BOOST_CHECK(sk.SetHexStr(strValidSecret));
+  BOOST_CHECK(!sk.SetHexStr("000"));
+  BOOST_CHECK(!sk.IsValid());
 }
 
 BOOST_AUTO_TEST_CASE(bls_sig_tests)
 {
   CBLSSecretKey sk1, sk2;
-  sk1.MakeNewKey();
-  sk2.MakeNewKey();
+  sk1.MakeNewKey(msgHash1);
+  sk2.MakeNewKey(msgHash2);
 
-  uint256 msgHash1 = uint256S();
-  uint256 msgHash2 = uint256S();
+  uint256 msgHash1 = uint256S("0000");
+  uint256 msgHash2 = uint256S("0000");
 
-  auto sig1 = sk1.Sign();
-  auto sig2 = sk2.Sign();
-  BOOST_CHECK();
-  BOOST_CHECK();
-  BOOST_CHECK();
-  BOOST_CHECK();
-  BOOST_CHECK();
+  auto sig1 = sk1.Sign(msgHash1);
+  auto sig2 = sk2.Sign(msgHash2);
+  BOOST_CHECK(sig1.VerifyInsecure(sk1.GetPublicKey(), msgHash1));
+  BOOST_CHECK(!sig1.VerifyInsecure(sk1.GetPublicKey(), msgHash2));
+  BOOST_CHECK(!sig2.VerifyInsecure(sk1.GetPublicKey(), msgHash1));
+  BOOST_CHECK(!sig2.VerifyInsecure(sk2.GetPublicKey(), msgHash2));
+  BOOST_CHECK(sig2.VerifyInsecure(sk2.GetPublicKey(), msgHash1));
 }
 
 struct Message
