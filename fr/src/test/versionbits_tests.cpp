@@ -19,14 +19,14 @@ private:
   mutable ThresholdConditionCache cache;
 
 public:
-  int64_t BeginTime() const override {}
-  int64_t EndTime() const override {}
-  int Period() const override {}
-  int Threshold() const override {}
-  bool Condition() const override {}
+  int64_t BeginTime() const override { return TestTime(10000); }
+  int64_t EndTime() const override { return TestTime(20000); }
+  int Period() const override { return 1000; }
+  int Threshold() const override { return 900; }
+  bool Condition() const override { return (pindex->nVersion & 0x100); }
 
-  ThresholdState GetStateFor() const {}
-  int GetStateSinceHeightFor(const CBlockIndex* pindexPrev) const { return AbstractThresholdConditionChecker::GetStateSinceHeightFor(pindexPrev, params)}
+  ThresholdState GetStateFor() const { return AbstractThresholdConditionChecker::GetStateFor(pindexPrev, paramsDummy, cache); }
+  int GetStateSinceHeightFor(const CBlockIndex* pindexPrev) const { return AbstractThresholdConditionChecker::GetStateSinceHeightFor(pindexPrev, paramsDummy, cache); }
 };
 
 #define CHECKERS 6
@@ -73,7 +73,7 @@ public:
   VersionBitsTester& TestStateSinceHeight(int height) {
     for (int i = 0; i < CHECKERS; i++) {
       if ((insecure_rand() & ((1 << i) - 1)) == 0) {
-        BOOST_CHECK_MESSAGE(checker[i].GetStateHeightFor(vpblock.empty() ? NULL : vpblock.back()) == height, strprintf("Test %     "))
+        BOOST_CHECK_MESSAGE(checker[i].GetStateHeightFor(vpblock.empty() ? NULL : vpblock.back()) == height, strprintf("Test % "))
       }
     }
     num++;
@@ -147,9 +147,76 @@ BOOST_FIXTURE_TEST_SUITE(versionbits_tests, TestingSetup)
 
 BOOST_AUTO_TEST_CASE(versionbits_computeblockversion)
 {
+  const Consensus::Params &mainnetParams = Params(CBaseChainParams::MAIN).GetConsensus();
 
+  int64_t bit = mainnetParams.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit;
+  int64_t nStartTime = mainnetParams.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime;
+  int64_t nTimeout = mainnetParams.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout;
 
+  assert(nStartTime < nTimeout);
 
+  VersionBitsTester firstChain, secondChain;
+
+  int64_t nTime = nStartTime - 1;
+
+  CBlockIndex *lastBlock = NULL;
+  lastBlock = firstChain.Mine(2016, nTime, VERSIONBITS_LAST_OD_BLOCK_VERSION).Tip();
+  BOOST_CHECK_EQUAL(ComputeBlockVersion(lastBlock, mainnetParams) & (1<<bit), 0);
+
+  for (int i=1; i<2012; i++) {
+    lastBlock = firstChain.Mine(2016+i, nTime, VERSIONBITS_LAST_OLD_BLOCK_VERSION).Tip();
+
+    BOOST_CHECK_EQUAL(ComputeBlockVersion(lastBlock, mainnetParams) & (1<<bit), 0);
+  }
+
+  nTime = nStartTime;
+  for (int i=2012; i<=2016; i++) {
+    lastBlock = firstChain.Mine(2016+i, nTime, VERSIONBITS_LAST_OLD_BLOCK_VERSION).Tip();
+    BOOST_CHECK_EQUAL(ComputeBlockVersion(lastBlock, mainnetParams) & (1<<bit), 0);
+  }
+
+  lastBlock = firstChain.Mine(6048, nTime, VERSIONBITS_LAST_OLD_BLOCK_VERSION).Tip();
+
+  BOOST_CHECK((ComputeBlockVersion(lastBlock, mainnetParams) & (1<<bit)) != 0);
+
+  BOOST_CHECK_EQUAL(ComputeBlockVersion(lastBlock, mainnetParams) & VERSIONBITS_TOP_MASK, VERSIONBITS_TOP_BITS);
+
+  nTime += 600;
+  int blocksToMine = 4032;
+  int nHeight = 6048;
+
+  while (nTime < nTimeout && blocksToMine > 0) {
+    lastBlock = firstChain.Mine(nHeight+1, nTime, VERSIONBITS_LAST_OLD_BLOCK_VERSION).Tip();
+    BOOST_CHECK((ComputeBlockVersion(lastBlock, mainnetParams) & (1<<bit)) != 0);
+    BOOST_CHECK_EQUAL(ComputeBlockVersion(lastBlock, mainnetParams) & VERSIONBITS_TOP_MASK, VERSIONBITS_TOP_BITS);
+    blocksToMine--;
+    nTime += 600;
+    nHeight += 1;
+  }
+  
+  nTime = nTimeout;
+
+  for (int i=0; i<2015; i++) {
+    lastBlock = firstChain.Mine(nHeight+1, nTime, VERSIONBITS_LAST_OLD_BLOCK_VERSION).Tip();
+    BOOST_CHECK((ComputeBlockVersion(lastBlock, mainnetParams) & (1<<bit)) != 0);
+    nHeight += 1;
+  }
+
+  lastBlock = firstChain.Mine(nHeight+1, nTime, VERSIONBITS_LAST_OLD_BLOCK_VERSION).Tip();
+  BOOST_CHECK_EQUAL(ComputeBlockVersion(lastBlock, mainnetParams) & (1<<bit), 0);
+
+  nTime = nStartTime;
+
+  lastBlock = secondChain.Mine(2016, nStartTime, VERSIONBITS_LAST_OLD_BLOCK_VERSION).Tip();
+  BOOST_CHECK((ComputeBlockVersion(lastBlock, mainnetParams) & (1<<bit)) != 0);
+
+  lastBlock = secondChain.Mine(4032, nStartTime, VERSIONBITS_TOP_BITS | (1<<bit)).Tip();
+  BOOST_CHECK((ComputeBlockVersion(lastBlock, mainnetParams) & (1<<bit)) != 0);
+
+  lastBlock = secondChain.Mine(6047, nStartTime, VERSIONBITS_LAST_OLD_BLOCK_VERISION).Tip();
+  BOOST_CHECK();
+  lastBlock = secondChain.Mine(6048, nStartTime, VERSIONBITS_LAST_OLD_BLOCK_VERSION).Tip();
+  BOOST_CHECK_EQUAL(ComputeBlockVersion(lastBlock, mainnetParams) & (1<<bit), 0);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
