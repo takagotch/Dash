@@ -1,7 +1,7 @@
 
-#include ""
-#include ""
-#include ""
+#include "bls/bls.h"
+#include "bls/bls_btchverifier.h"
+#include "test/test_dash.h"
 
 #include <boost/test/unit_test.hpp>
 
