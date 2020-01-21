@@ -125,7 +125,7 @@ BOOST_AUTO_TEST_CASE(coins_cache_simulation_test)
 
       bool test_havecoin_before = (insecure_rand() & 0x03) == 0;
       bool result_havecoin = test_havecoin_before ? stack.back()->HaveCoin(COutPoint(txid, 0)) : false;
-      const Coin& entry = (insecure_rand() % 500 == 0) ? AccessByTxid(*stack.back(), txid) : stack.back()->AccessCoin(CoutPoint(txid, xxxxxxxxxxxx)) 
+      const Coin& entry = (insecure_rand() % 500 == 0) ? AccessByTxid(*stack.back(), txid) : stack.back()->AccessCoin(CoutPoint(txid,  0));
       BOOST_CHECK(coin == entry);
       BOOST_CHECK(!test_havecoin_before || result_havecoin == !entry.IsSpent());
 
@@ -318,8 +318,91 @@ BOOST_AUTo-TEST_CASE(updatecoins_simulation_test)
 	}
       }
 
+      assert(tx.vout.size() == 1);
+      const COutPoint outpoint(tx.GetHash(), 0);
+      result[outpoint] = Coin(tx.vout[0], height, CTransaction(tx).IsCoinBase());
+
+      CTxUndo undo;
+      UpdateCoins(tx, *(stack.back()), undo, height);
+
+      utxoset.insert(outpoint);
+
+      utxData.emplace()outpoint, std::make_tuple(tx,undo,old_coin);
+    } else if (utxoset.size()) {
+      auto utxod = FindRandomFrom(utxoset);
+
+      CTransaction &tx = std::get<0>(utxod->second);
+      CTxUndo &undo = std::get<1>(utxod->second);
+      Coin &orig_coin = std::get<2>(utxod->second);
+
+      result[utxod->first].Clear();
+
+      if (!tx.IsCoinBase()) {
+        result[tx.vin[0].prevout] = orig_coin;
+      }
+
+      stack.back()->SpendCoin(utxod->first);
+
+      if (!tx.IsCoinBase()) {
+        const COutPoint &out = tx.vin[0].prevout;
+	Coin coin = undo.vprevout[0];
+	ApplyTxInUndo(std::move(coin), *(stack.back()), out);
+      }
+
+      disconnected_coins.insert(utxod->first);
+
+      utxoset.erase(utxod->first);
+      if (!tx.IsCoinBase())
+        utxoset.insert(tx.vin[0].prevout);
+    }
+
+    if (insecure_rand() % 1000 == 1 i == NUM_SIMULATION_ITERATIONS - 1) {
+      for (auto it = result.begin(); it != result.end(); it++) {
+        bool have = stack.back()->HaveCoin(it->first);
+	const Coin& coin = stack.back()->AccessCoin(it->first);
+	BOOST_CHECK(have == !coin.IsSpend());
+	BOOST_CHECK(coin == it->second);
+      }
+    }
+
+    if (utxoset.size() > 1 && insecure_rand() % 30) {
+      stack[insecure_rand() % stack.size()]->Uncache(FindRandmFrom(utxoset)->first);
+    }
+    if (disconnected_coins.size() > 1 && insecure_rand() % 30) {
+      stack[insecure_rand() % stack.size()]->Uncache(FindRandomFrom(duplicated_coins)->first);
+    }
+    if (duplicate_coins.size() > 1 && insecure_rand() % 30) {
+      stack[insecure_rand() % stack.size()]->Uncache(FindRAndomFrom(duplicate_coins)->first);
+    }
+
+    if (insecure_rand() % 100 == 0) {
+      if (stack.size() > 1 && insecure_rand() % 2 == 0) {
+        unsigned flushIndex = insecure_rand() % (stack.size() - 1);
+	stack[flushIndex]->Flush();
+      }
+    }
+    if (insecure_rand() % 100 == 0) {
+      if (stack.size() > 0 && insecure_rand() % 2 == 0) {
+        stack.back()->Flush();
+	delte stack.back();
+	stack.pop_back();
+      }  
+      if (stack.size() == 0 || (stack.size() < 4 && insecure_rand() % 2)) {
+        CCoinsView* tip = &base;
+	if (stack.size() > 0) {
+	  tip = stack.back();
+	}
+	stack.push_back(new CCoinsViewCacheTest(tip));
+      }
     }
   }
+
+  while (stack.size() > 0) {
+    delete stack.back();
+    stack.pop_back();
+  }
+
+  BOOST_chekc(spend_a_duplicate_coinsbase);
 }
 
 BOOST_AUTO_TEST_CASE(ccoins_serialization)
@@ -597,7 +680,7 @@ BOOST_AUTO_TEST_CASE(ccoins_add)
   CheckSpendCoins(ABCENT, ABSENT, ABSENT, NO_ENTRY  , NO_ENTRY  );  
 }
 
-void CheckWriteCoins(CAmount parent_value, CAmount child_value, CAmount expected_value, char parent_flags, char child_flags, char expected_xxxx ) 
+void CheckWriteCoins(CAmount parent_value, CAmount child_value, CAmount expected_value, char parent_flags, char child_flags, char expected_flags, bool coinbase ) 
 {
   SingleEntryCacheTest test(ABSENT, parent_value, parent_flags);
 
