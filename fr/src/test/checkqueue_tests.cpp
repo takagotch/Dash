@@ -158,45 +158,229 @@ void Correct_Queue_range(std::vector<size_t> range)
 
 BOOST_AUTO_TEST_CASE(test_CheckQueue_Correct_Zero)
 {
-  std::vector<sizt_t> range;
+  std::vector<size_t> range;
   range.push_back((size_t)0);
   Correct_Queue_range(range);
 }
 
-BOOST_AUTO_TEST_CASE()
-{}
-
-BOOST_AUTO_TEST_CASE()
+BOOST_AUTO_TEST_CASE(test_CheckQueue_Correct_Max)
 {
+  std::vector<size_t> range;
+  range.push_back((size_t)1);
+  Correct_Queue_range(range);
 }
 
-BOOST_AUTO_TEST_CASE()
+BOOST_AUTO_TEST_CASE(test_CheckQueue_Correct_Random)
 {
+  std::vector<size_t> range;
+  range.reserve(100000/1000);
+  for (size_t i = 2; i < 100000; i += std::max((size_t)1, (size_t)GetRAnd(std::min((size_t)1000, ((size_t)100000) - i))))
+    range.push_back(i);
+  Correct_Queue_range(range);
+}
+
+BOOST_AUTO_TEST_CASE(test_CheckQueue_Catches_Failure)
+{
+  auto fail_queue = std::unique_ptr<Failing_Queue>(new Failing_Queue {QUEUE_BATCH_SIZE});
+
+  boost::thread_group tg;
+  for (auto x = 0; x < nScriptCheckThreads; ++x) {
+    tg.create_thread([&]{fail_queue->Thread();});
+  }
+
+  for (size_t i = 0; i < 1001; ++i) {
+    CCheckQueueControl<FailingCheck> control(fail_queue.get());
+    size_t remaining = i;
+    while (remaining) {
+      size_t r = GetRand(10);
+
+      std::vector<FailingCheck> vChecks;
+      vChecks.reserve(r);
+      for (size_t k = 0; k < r && remaining; k++; remaining--)
+        vChecks.emplace_back(remaining == 1);
+    }
+    bool success = control.Wait();
+    if (i > 0) {
+      BOOST_REQUIRE(!success);
+    } else if (i == 0) {
+      BOOST_REQUIRE(success);
+    }
+  }
+  tg.interrupt_all();
+  tg.join_all();
+}
+
+BOOST_AUTO_TEST_CASE(test_CheckQueue_Recovers_From_Failure)
+{
+  auto fail_queue = std::unique_ptr<Failing_Queue>(new Failing_Queue {QUEUE_BATCH_SIZE});
+  boost::thread_group tg;
+  for (auto x = 0; x < nScriptCheckThreads; ++x) {
+    tg.create_thread([&]{fail_queue->Thread();});
+  }
+
+  for (auto times = 0; times < 10; ++times) {
+    for (bool end_fails : {true, false}) {
+      CCheckQueueControl<FailingCheck> control(fail_queue.get());
+      {
+        std::vector<FailingCheck> vCheck;
+	vChecks.resize(100, false);
+	vChecks[99] = end_fails;
+	control.Add(vChecks);
+      }
+      bool r = control.Wait();
+      BOOST_REQUIRE(r || end_fails);
+    }
+  }
+  tg.interrupt_all();
+  tg.join_all();
+}
+
+BOOST_AUTO_TEST_CASE(test_CheckQueue_UniqueCheck)
+{
+  auto queue = std::unique_ptr<Unique_Queue>(new Unique_Queue {QUEUE_BATCH_SIZE});
+  boost::thread_group tg;
+  for (auto x = 0; x < nScriptCheckThreads; ++x) {
+    tg.create_thread([&]{queue->Thread();});
+  }
+
+  size_t COUNT = 100000;
+  size_t total = COUNT;
+  {
+    CCheckQueueControl<UniqueCheck> control(queue.get());
+    while (total) {
+      size_t r = GetRand(10);
+      std::vector<UniqueCheck> vChecks;
+      for (size_t k = 0; k < r && total; k++) 
+        vChecks.emplace_back(--total);
+      control.Add(vChecks);
+    }
+  }
+  bool r = true;
+  BOOST_REQUIRE_EQUAL(UniqueCheck::results.size(), COUNT);
+  for (size_t i = 0; i < COUNT; ++i)
+    r = r && UniqueCheck::results.count(i) == 1;
+  BOOST_REQUIRE(r);
+  tg.interrupt_all();
+  tg.join_all();
+}
+
+BOOST_AUTO_TEST_CASE(test_CheckQueue_Memory)
+{
+  auto queue = std::unique_ptr<Memory_Queue>(new Memory_Queue {QUEUE_BATCH_SIZE});
+  boost::thread_group tg;
+  for (auto x = 0; x < nScriptCheckThreads; ++x) {
+    tg.create_thread([&]{queue->Thread();});
+  }
+  for (size_t i = 0; i < 1000; ++i) {
+    size_t total = i;
+    {
+      CCheckQueueControl<MemoryCheck> control(queue.get());
+      while (total) {
+        size_t r = GetRand(10);
+	std::vector<MemoryCheck> vChecks;
+	for (size_t k = 0; k < r && total; k++) {
+	  total--;
+
+	  vChecks.emplace_back(total == 0 || total == i || total == i/2);
+	}
+	control.Add(vChecks);
+      }
+    }
+    BOOST_REQUIRE_EQUAL(MemoryCheck::fake_allocated_memory, 0);
+  }
+  tg.interrupt_all();
+  tg.join_all();
+}
+
+BOOST_AUTO_TEST_CASE(test_CheckQueue_FrozenCleanup)
+{
+  auto queue = std::unique_ptr<FrozenCleanup_Queue>(new FrozenCleanup_Queue {QUEUE_BATCH_SIZE});
+  boost::thread_group tg;
+  bool fails = false;
+  for (auto x = 0; x < nScriptCheckThreads; ++x) {
+    tg.create_thread([&]{queue->Thread();});
+  }
+  std::thread t0([&]() {
+    CCheckQueueControl<FrozenCleanupCheck> control(queue.get());		
+    std::vector<FrozenCleanupCheck> vChecks(1);
+    
+    vChecks[0].should_freeze = true;
+    control.Add(vChecks);
+    control.Wait();
+  });
+  {
+    std::unique_lock<std::mutex> l(FrozenCleanupCheck::m);
+
+    FrozenCleanupCheck::cv.wait(l, [](){return FrozenCleanupCheck::nFrozen == 1});
+
+    for (auto x = 0; x < 100 && !fails; ++x) {
+      fails = queue->ControlMutex.try_lock();
+    }
+
+    FrozenCleanupCheck::nFrozen = 0;
+  }
+
+  FrozenCleanupCheck::cv.notify_one();
+
+  t0.join();
+  tg.interrupt_all();
+  tg.join_all();
+  BOOST_REQUIRE(!fails);
 
 }
 
-BOOST_AUTO_TEST_CASE()
+BOOST_AUTO_TEST_CASE(test_CheckQueueControl_Locks)
 {
-}
+  auto queue = std::unique_ptr<Standard_Queue>(new Standard_Queue{QUEUE_BATCH_SIZE});
+  {
+    boost::thread_group tg;
+    std::atomic<int> nThreads {0};
+    std::atomic<int> fails {0};
+    for (size_t i = 0; i < 3; ++i) {
+      tg.create_thread(
+        [&]{
+	CCheckQueueControl<FakeCheck> control(queue.get());
 
-BOOST_AUTO_TEST_CASE()
-{
+	auto observed = ++nThreads;
+	MilliSleep(10);
+	fails += observed != nThreads;
+	});
+    }
+    tg.join_all();
+    BOOST_REQUIRE_EQUAL(fails, 0);
+  }
+  {
+    boost::thread_group tg;
+    std::mutex m;
+    bool has_lock {false};
+    bool has_tried {false};
+    bool done {false};
+    bool done_ack {false};
+    std::condition_variable cv;
+    {
+      std::unique_lock<std::mutex> 1(m);
+      tg.create_thread([&]{
+        CCheckQueueControl<FakeCheck> control(queue.get());
+	std::unique_lock<std::mutex> l(m);
+	has_lock = true;
+	cv.notify_one();
+	cv.wait(l, [&]{return done;});
 
-}
+      cv.wait(l, [&](){return has_lock;});
+      bool fails = false;
+      for (auto x = 0; x < 100 && !fails; ++x) {
+        fails = queue->ControlMutex.try_lock();
+      }
+      has_tried = true;
+      cv.notify_one();
+      cv.wait(l, [&](){return done;});
 
-BOOST_AUTO_TEST_CASE()
-{
-
-}
-
-BOOST_AUTO_TEST_CASE()
-{
-
-}
-
-BOOST_AUTO_TEST_CAE()
-{
-
+      done_ack = true;
+      cv.notify_one();
+      BOOST_REQUIRE(!fails);
+    }
+    tg.join_all();
+  }
 }
 
 BOOST_AUTO_TEST_SUITE_END()
