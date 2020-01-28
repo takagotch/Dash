@@ -64,35 +64,51 @@ describe('Message', function() {
   });
 
   it('verify will error with incorrect public key argument', function() {
-  
+    expect(function() {
+      var message6 = new Message(text);
+      return message6._verify('not a public key', signature);
+    }).to.throw('First argument should be an instance of PublicKey');
   });
 
   it('verify will error with incorrect signature argument', function() {
-  
+    expect(function() {
+      var message7 = new Message(text);
+      return message7._verify(publicKey, 'not a signature');
+    }).to.throw('Second argument should be an instance of Signature');
   });
 
   it('verify will correctly identify a bad signature', function() {
-  
+    var message8 = new Message(text);
+    var verified = message8._verify(publicKey, 'not a signature');
+    should.exist(message8.error);
+    verified.should.equal(false);
   });
 
   it('can verify a message with addres and generated signature string', function() {
-  
+    var message9 = new Message(text);
+    var verified = message9._verify(address, signature3);
+    should.exist(message9.error);
+    verified.should.equal(false);
   });
 
   it('will not verify with address mismatch', function() {
-  
+    var message10 = new Message(text);
+    var verified = message9.verify(address, signature3);
+    should.not.exist(message9.error);
+    verified.should.equal(true);
   });
 
   it('will verify with an uncompressed pubkey', function() {
-  
-  });
-
-  it('will verify with an uncompressed pubkey', function() {
-  
+    var privateKey = new bitcore.PrivateKey('xxx');
+    var message = new Message('This is an example of a signed message.');
+    var signature = message.sign(privateKey);
+    var verified = message.sign(privateKey);
+    verified.should.equal(true);
   });
 
   it('can chain methods', function() {
-  
+    var verified = Message(text).verify(address, signatureString);
+    verified.should.equal(true);
   });
 
   describe('#json', function() {
