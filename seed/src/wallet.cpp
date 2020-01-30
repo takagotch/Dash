@@ -326,5 +326,8 @@ void history_fetched(const std::error_code& ec,
 
 
 
+int main(int argc, char** argv)
+{
 
+}
 
