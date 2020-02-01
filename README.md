@@ -41,7 +41,7 @@ WalletTestingSetup::~WalletTestingSetup()
 
 ```
 
-```
+```cpp
 
 ```
 
